@@ -1,12 +1,107 @@
 import base64
+import os
 
 from gcloud.exceptions import NotFound as BucketNotFound, Forbidden, BadRequest
 from gcloud.storage import Client as GSClient, Blob
 import nbformat
+from notebook.services.contents.checkpoints import Checkpoints, \
+    GenericCheckpointsMixin
 from notebook.services.contents.manager import ContentsManager
 from tornado import web
 from tornado.escape import url_unescape
 from traitlets import Any, Bool, Int, Unicode
+
+
+class GoogleStorageCheckpoints(Checkpoints, GenericCheckpointsMixin):
+    checkpoint_dir = Unicode(
+        ".ipynb_checkpoints",
+        config=True,
+        help="""The directory name in which to keep file checkpoints
+
+            This is a path relative to the file"s own directory.
+
+            By default, it is .ipynb_checkpoints
+            """,
+    )
+    checkpoint_bucket = Unicode(
+        "", config=True, help="The bucket name where to keep file checkpoints."
+                              " If empty, the current bucket is used."
+    )
+    
+    def create_file_checkpoint(self, content, format, path):
+        """Create a checkpoint of the current state of a file
+
+        Returns a checkpoint model for the new checkpoint.
+        """
+        checkpoint_id = u"checkpoint"
+        cp = self._get_checkpoint_path(checkpoint_id, path)
+        self.log.debug("creating checkpoint for %s as %s", path, cp)
+        blob = self.parent._save_file(cp, content, format)
+        return {
+            "id": checkpoint_id,
+            "last_modified": blob.updated,
+        }
+
+    def create_notebook_checkpoint(self, nb, path):
+        """Create a checkpoint of the current state of a file
+
+        Returns a checkpoint model for the new checkpoint.
+        """
+        raise NotImplementedError("must be implemented in a subclass")
+
+    def get_file_checkpoint(self, checkpoint_id, path):
+        """Get the content of a checkpoint for a non-notebook file.
+
+         Returns a dict of the form:
+         {
+             "type": "file",
+             "content": <str>,
+             "format": {"text","base64"},
+         }
+        """
+        raise NotImplementedError("must be implemented in a subclass")
+
+    def get_notebook_checkpoint(self, checkpoint_id, path):
+        """Get the content of a checkpoint for a notebook.
+
+        Returns a dict of the form:
+        {
+            "type": "notebook",
+            "content": <output of nbformat.read>,
+        }
+        """
+        raise NotImplementedError("must be implemented in a subclass")
+
+    def rename_checkpoint(self, checkpoint_id, old_path, new_path):
+        """Rename a single checkpoint from old_path to new_path."""
+        raise NotImplementedError("must be implemented in a subclass")
+
+    def delete_checkpoint(self, checkpoint_id, path):
+        """delete a checkpoint for a file"""
+        raise NotImplementedError("must be implemented in a subclass")
+
+    def list_checkpoints(self, path):
+        """Return a list of checkpoints for a given file"""
+        raise NotImplementedError("must be implemented in a subclass")
+
+    def rename_all_checkpoints(self, old_path, new_path):
+        """Rename all checkpoints for old_path to new_path."""
+        for cp in self.list_checkpoints(old_path):
+            self.rename_checkpoint(cp["id"], old_path, new_path)
+
+    def delete_all_checkpoints(self, path):
+        """Delete all checkpoints for the given path."""
+        for checkpoint in self.list_checkpoints(path):
+            self.delete_checkpoint(checkpoint["id"], path)
+
+    def _get_checkpoint_path(self, checkpoint_id, path):
+        bucket_name, bucket_path = self.parent._parse_path(path)
+        if self.checkpoint_bucket:
+            bucket_name = self.checkpoint_bucket
+        slash = bucket_path.rfind("/") + 1
+        name, ext = os.path.splitext(bucket_path[slash:])
+        return bucket_name + "/" + bucket_path[:slash] + \
+            self.checkpoint_dir + "/" + name + "-" + checkpoint_id + ext
 
 
 class JupyterGoogleStorageContentManager(ContentsManager):
@@ -263,6 +358,9 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             except Exception:
                 self.log.error("Post-save hook failed on %s", os_path, exc_info=True)
 
+    def _checkpoints_class_default(self):
+        return GoogleStorageCheckpoints
+
     def _get_bucket(self, name, throw=False):
         if not self.cache_buckets:
             try:
@@ -503,7 +601,9 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             raise web.HTTPError(
                 400, u"Encoding error saving %s: %s" % (path, e)
             )
-        bucket.blob(bucket_path).upload_from_string(bcontent)
+        blob = bucket.blob(bucket_path)
+        blob.upload_from_string(bcontent)
+        return blob
 
     def _save_directory(self, path, model):
         """create a directory"""
