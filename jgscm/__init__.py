@@ -1,6 +1,6 @@
 import base64
 
-from gcloud.exceptions import NotFound as BucketNotFound, Forbidden
+from gcloud.exceptions import NotFound as BucketNotFound, Forbidden, BadRequest
 from gcloud.storage import Client as GSClient, Blob
 import nbformat
 from notebook.services.contents.manager import ContentsManager
@@ -26,6 +26,10 @@ class JupyterGoogleStorageContentManager(ContentsManager):
     cache_buckets = Bool(True, config=True,
                          help="Value indicating whether to cache the bucket "
                               "objects for faster operations.")
+    # redefine untitled_directory to change the default value
+    untitled_directory = Unicode(
+        "untitled-folder", config=True,
+        help="The base name used when creating untitled directories.")
     post_save_hook = Any(None, config=True,
                          help="""Python callable or importstring thereof
 
@@ -72,6 +76,8 @@ class JupyterGoogleStorageContentManager(ContentsManager):
 
     @debug_args
     def file_exists(self, path=""):
+        if path == "":
+            return False
         if path.startswith("/"):
             path = path[1:]
         try:
@@ -79,10 +85,11 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         except ValueError:
             return False
         bucket = self._get_bucket(bucket_name)
-        if bucket is None:
+        if bucket is None or bucket_path == "":
             return False
-        if bucket_path == "":
-            return True
+        if bucket_path.endswith("/"):
+            # blob may exist but we treat such as directories
+            return False
         return bucket.blob(bucket_path).exists()
 
     @debug_args
@@ -130,6 +137,12 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             raise web.HTTPError(400, u"No file type provided")
         if "content" not in model and model["type"] != "directory":
             raise web.HTTPError(400, u"No file content provided")
+        bucket_name, bucket_path = self._parse_path(path)
+        if bucket_path == "" and model["type"] != "directory":
+            raise web.HTTPError(403, u"You may only create directories "
+                                     u"(buckets) at the root level.")
+        if bucket_path != "" and model["type"] == "directory":
+            path += "/"
         self.log.debug("Saving %s", path)
 
         self.run_pre_save_hook(model=model, path=path)
@@ -146,7 +159,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
                 # Missing format will be handled internally by _save_file.
                 self._save_file(path, model["content"], model.get("format"))
             elif model["type"] == "directory":
-                self._save_directory(path, model, path)
+                self._save_directory(path, model)
             else:
                 raise web.HTTPError(
                     00, u"Unhandled contents type: %s" % model["type"])
@@ -167,7 +180,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         if validation_message:
             model["message"] = validation_message
 
-        self.run_post_save_hook(model=model, os_path=os_path)
+        self.run_post_save_hook(model=model, os_path=path)
 
         return model
 
@@ -267,7 +280,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         except KeyError:
             try:
                 bucket = self.client.get_bucket(name)
-            except BucketNotFound:
+            except (BadRequest, BucketNotFound):
                 if throw:
                     raise
                 return None
@@ -317,7 +330,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             return False, None
         if bucket_path == "" or bucket_path.endswith("/"):
             if bucket_path != "":
-                exists = bucket.blob(bucket_path).exists
+                exists = bucket.blob(bucket_path).exists()
                 if exists and not content:
                     return True, None
             # blob may not exist but at the same time be a part of a path
@@ -434,7 +447,8 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             "content": None,
             "format": None,
             "mimetype": "application/x-directory",
-            "writable": members is not None or not self.is_hidden(path)
+            "writable": path and (
+                members is not None or not self.is_hidden(path))
         }
         if content:
             blobs, folders = members
@@ -501,8 +515,11 @@ class JupyterGoogleStorageContentManager(ContentsManager):
                 self.log.debug("Directory %r already exists", path)
                 return
         bucket_name, bucket_path = self._parse_path(path)
-        bucket = self._get_bucket(bucket_name, throw=True)
-        bucket.blob(bucket_path + "/").upload_from_string(
-            b"", content_type="application/x-directory")
+        if bucket_path == "":
+            self.client.create_bucket(bucket_name)
+        else:
+            bucket = self._get_bucket(bucket_name, throw=True)
+            bucket.blob(bucket_path + "/").upload_from_string(
+                b"", content_type="application/x-directory")
 
     debug_args = staticmethod(debug_args)
