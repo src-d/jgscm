@@ -1,5 +1,6 @@
 import base64
 import os
+import uuid
 
 from gcloud.exceptions import NotFound as BucketNotFound, Forbidden, BadRequest
 from gcloud.storage import Client as GSClient, Blob
@@ -12,7 +13,7 @@ from tornado.escape import url_unescape
 from traitlets import Any, Bool, Int, Unicode
 
 
-class GoogleStorageCheckpoints(Checkpoints, GenericCheckpointsMixin):
+class GoogleStorageCheckpoints(GenericCheckpointsMixin, Checkpoints):
     checkpoint_dir = Unicode(
         ".ipynb_checkpoints",
         config=True,
@@ -33,9 +34,10 @@ class GoogleStorageCheckpoints(Checkpoints, GenericCheckpointsMixin):
 
         Returns a checkpoint model for the new checkpoint.
         """
-        checkpoint_id = u"checkpoint"
+        checkpoint_id = str(uuid.uuid4())
         cp = self._get_checkpoint_path(checkpoint_id, path)
-        self.log.debug("creating checkpoint for %s as %s", path, cp)
+        self.log.debug("creating checkpoint %s for %s as %s",
+                       checkpoint_id, path, cp)
         blob = self.parent._save_file(cp, content, format)
         return {
             "id": checkpoint_id,
@@ -47,7 +49,15 @@ class GoogleStorageCheckpoints(Checkpoints, GenericCheckpointsMixin):
 
         Returns a checkpoint model for the new checkpoint.
         """
-        raise NotImplementedError("must be implemented in a subclass")
+        checkpoint_id = str(uuid.uuid4())
+        cp = self._get_checkpoint_path(checkpoint_id, path)
+        self.log.debug("creating checkpoint %s for %s as %s",
+                       checkpoint_id, path, cp)
+        blob = self.parent._save_notebook(cp, nb)
+        return {
+            "id": checkpoint_id,
+            "last_modified": blob.updated,
+        }
 
     def get_file_checkpoint(self, checkpoint_id, path):
         """Get the content of a checkpoint for a non-notebook file.
@@ -59,7 +69,18 @@ class GoogleStorageCheckpoints(Checkpoints, GenericCheckpointsMixin):
              "format": {"text","base64"},
          }
         """
-        raise NotImplementedError("must be implemented in a subclass")
+        self.log.info("restoring %s from checkpoint %s", path, checkpoint_id)
+        cp = self._get_checkpoint_path(checkpoint_id, path)
+        exists, blob = self.parent._fetch(cp)
+        if not exists:
+            raise web.HTTPError(404, u"No such checkpoint: %s for %s" % (
+                checkpoint_id, path))
+        content, fmt = self.parent._read_file(blob, None)
+        return {
+            "type": "file",
+            "content": content,
+            "format": fmt
+        }
 
     def get_notebook_checkpoint(self, checkpoint_id, path):
         """Get the content of a checkpoint for a notebook.
@@ -70,38 +91,58 @@ class GoogleStorageCheckpoints(Checkpoints, GenericCheckpointsMixin):
             "content": <output of nbformat.read>,
         }
         """
-        raise NotImplementedError("must be implemented in a subclass")
+        self.log.info("restoring %s from checkpoint %s", path, checkpoint_id)
+        cp = self._get_checkpoint_path(checkpoint_id, path)
+        exists, blob = self.parent._fetch(cp)
+        if not exists:
+            raise web.HTTPError(404, u"No such checkpoint: %s for %s" % (
+                checkpoint_id, path))
+        nb = self.parent._read_notebook(blob)
+        return {
+            "type": "notebook",
+            "content": nb
+        }
 
     def rename_checkpoint(self, checkpoint_id, old_path, new_path):
         """Rename a single checkpoint from old_path to new_path."""
-        raise NotImplementedError("must be implemented in a subclass")
+        old_cp = self._get_checkpoint_path(checkpoint_id, old_path)
+        new_cp = self._get_checkpoint_path(checkpoint_id, new_path)
+        self.parent.rename_file(old_cp, new_cp)
 
     def delete_checkpoint(self, checkpoint_id, path):
         """delete a checkpoint for a file"""
-        raise NotImplementedError("must be implemented in a subclass")
+        cp = self._get_checkpoint_path(checkpoint_id, path)
+        self.parent.delete_file(cp)
 
     def list_checkpoints(self, path):
         """Return a list of checkpoints for a given file"""
-        raise NotImplementedError("must be implemented in a subclass")
-
-    def rename_all_checkpoints(self, old_path, new_path):
-        """Rename all checkpoints for old_path to new_path."""
-        for cp in self.list_checkpoints(old_path):
-            self.rename_checkpoint(cp["id"], old_path, new_path)
-
-    def delete_all_checkpoints(self, path):
-        """Delete all checkpoints for the given path."""
-        for checkpoint in self.list_checkpoints(path):
-            self.delete_checkpoint(checkpoint["id"], path)
+        cp = self._get_checkpoint_path(None, path)
+        bucket_name, bucket_path = self.parent._parse_path(cp)
+        bucket = self.parent._get_bucket(bucket_name)
+        it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
+                               max_results=self.parent.max_list_size)
+        checkpoints = [{
+            "id": os.path.splitext(file.path)[0][-36:],
+            "last_modified": file.updated,
+        } for file in it]
+        checkpoints.sort(key=lambda c: c["last_modified"], reverse=True)
+        self.log.debug("list_checkpoints: %s: %s", path, checkpoints)
+        return checkpoints
 
     def _get_checkpoint_path(self, checkpoint_id, path):
+        if path.startswith("/"):
+            path = path[1:]
         bucket_name, bucket_path = self.parent._parse_path(path)
         if self.checkpoint_bucket:
             bucket_name = self.checkpoint_bucket
         slash = bucket_path.rfind("/") + 1
         name, ext = os.path.splitext(bucket_path[slash:])
-        return bucket_name + "/" + bucket_path[:slash] + \
-            self.checkpoint_dir + "/" + name + "-" + checkpoint_id + ext
+        if checkpoint_id is not None:
+            return "%s/%s%s/%s-%s%s" % (
+                bucket_name, bucket_path[:slash], self.checkpoint_dir, name,
+                checkpoint_id, ext)
+        return "%s/%s%s/%s" % (bucket_name, bucket_path[:slash],
+                               self.checkpoint_dir, name)
 
 
 class JupyterGoogleStorageContentManager(ContentsManager):
@@ -463,7 +504,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
     def _read_file(self, blob, format):
         """Read a non-notebook file.
 
-        os_path: The path to be read.
+        blob: instance of :class:`gcloud.storage.Blob`.
         format:
           If "text", the contents will be decoded as UTF-8.
           If "base64", the raw bytes contents will be encoded as base64.
@@ -514,6 +555,12 @@ class JupyterGoogleStorageContentManager(ContentsManager):
 
         return model
 
+    def _read_notebook(self, blob):
+        data = blob.download_as_string().decode("utf-8")
+        nb = nbformat.reads(data, as_version=4)
+        self.mark_trusted_cells(nb, self._get_blob_path(blob))
+        return nb
+
     def _notebook_model(self, blob, content=True):
         """Build a notebook model
 
@@ -523,9 +570,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         model = self._base_model(blob)
         model["type"] = "notebook"
         if content:
-            data = blob.download_as_string()           
-            nb = nbformat.reads(data, as_version=4)
-            self.mark_trusted_cells(nb, self._get_blob_path(blob))
+            nb = self._read_notebook(blob)
             model["content"] = nb
             model["format"] = "json"
             self.validate_notebook_model(model)
@@ -577,8 +622,9 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         bucket_name, bucket_path = self._parse_path(path)
         bucket = self._get_bucket(bucket_name, throw=True)
         data = nbformat.writes(nb, version=nbformat.NO_CONVERT)
-        bucket.blob(bucket_path).upload_from_string(
-            data, "application/x-ipynb+json")
+        blob = bucket.blob(bucket_path)
+        blob.upload_from_string(data, "application/x-ipynb+json")
+        return blob
 
     def _save_file(self, path, content, format):
         """Save content of a generic file."""
