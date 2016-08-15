@@ -10,7 +10,7 @@ from notebook.services.contents.checkpoints import Checkpoints, \
 from notebook.services.contents.manager import ContentsManager
 from tornado import web
 from tornado.escape import url_unescape
-from traitlets import Any, Bool, Int, Unicode
+from traitlets import Any, Bool, Int, Unicode, default
 
 
 class GoogleStorageCheckpoints(GenericCheckpointsMixin, Checkpoints):
@@ -148,7 +148,7 @@ class GoogleStorageCheckpoints(GenericCheckpointsMixin, Checkpoints):
                                self.checkpoint_dir, name)
 
 
-class JupyterGoogleStorageContentManager(ContentsManager):
+class GoogleStorageContentManager(ContentsManager):
     project = Unicode(
         "", config=True,
         help="The name of the project in Google Cloud to use. If you do not "
@@ -203,10 +203,9 @@ class JupyterGoogleStorageContentManager(ContentsManager):
     def is_hidden(self, path):
         if path == "":
             return False
-        try:
-            bucket_name, bucket_path = self._parse_path(path)
-        except ValueError:
-            return True
+        if path.startswith("/"):
+            path = path[1:]
+        bucket_name, bucket_path = self._parse_path(path)
         try:
             bucket = self._get_bucket(bucket_name)
         except Forbidden:
@@ -215,7 +214,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
 
     @debug_args
     def file_exists(self, path=""):
-        if path == "":
+        if path == "" or path.endswith("/"):
             return False
         if path.startswith("/"):
             path = path[1:]
@@ -225,9 +224,6 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             return False
         bucket = self._get_bucket(bucket_name)
         if bucket is None or bucket_path == "":
-            return False
-        if bucket_path.endswith("/"):
-            # blob may exist but we treat such as directories
             return False
         return bucket.blob(bucket_path).exists()
 
@@ -336,12 +332,10 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
                                max_results=self.max_list_size)
         files = list(it)
-        folders = [f[:-1] for f in it.prefixes]
+        folders = it.prefixes
         bucket.delete_blobs(files)
-        if not path.endswith("/"):
-            path += "/"
         for folder in folders:
-            self.delete_file(path + folder)
+            self.delete_file(bucket_name + "/" + folder)
 
     @debug_args
     def rename_file(self, old_path, new_path):
@@ -353,37 +347,49 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         old_bucket = self._get_bucket(old_bucket_name, throw=True)
         new_bucket_name, new_bucket_path = self._parse_path(new_path)
         new_bucket = self._get_bucket(new_bucket_name, throw=True)
-        old_blob = old_bucket.get_blob()
+        old_blob = old_bucket.get_blob(old_bucket_path)
         if old_bucket_name == new_bucket_name:
             if old_blob is not None:
                 old_bucket.rename_blob(old_blob, new_bucket_path)
                 return
+            if not old_bucket_path.endswith("/"):
+                old_bucket_path += "/"
+            if not new_bucket_path.endswith("/"):
+                new_bucket_path += "/"
             it = old_bucket.list_blobs(prefix=old_bucket_path, delimiter="/",
                                        max_results=self.max_list_size)
             old_blobs = list(it)
-            folders = [f[:-1] for f in it.prefixes]
+            folders = it.prefixes
             for ob in old_blobs:
-                old_bucket.rename_blob(ob, new_bucket_path + "/" +
-                                       self._get_blob_name(ob))
+                old_bucket.rename_blob(
+                    ob, new_bucket_path + self._get_blob_name(ob))
             for f in folders:
-                self.rename_file(old_bucket_path + "/" + f,
-                                 new_bucket_path + "/" + f)
+                self.rename_file(
+                    old_bucket_name + "/" + f,
+                    new_bucket_name + "/" +
+                    f.replace(old_bucket_path, new_bucket_path, 1))
             return
         if old_blob is not None:
             old_bucket.copy_blob(old_blob, new_bucket, new_bucket_path)
             old_bucket.delete_blob(old_blob)
             return
+        if not old_bucket_path.endswith("/"):
+            old_bucket_path += "/"
+        if not new_bucket_path.endswith("/"):
+            new_bucket_path += "/"
         it = old_bucket.list_blobs(prefix=old_bucket_path, delimiter="/",
                                    max_results=self.max_list_size)
         old_blobs = list(it)
-        folders = [f[:-1] for f in it.prefixes]
+        folders = it.prefixes
         for ob in old_blobs:
-            old_bucket.copy_blob(ob, new_bucket, new_bucket_path + "/" +
+            old_bucket.copy_blob(ob, new_bucket, new_bucket_path +
                                  self._get_blob_name(ob))
             old_bucket.delete_blob(old_blob)
         for f in folders:
-            self.rename_file(old_bucket_path + "/" + f,
-                             new_bucket_path + "/" + f)
+            self.rename_file(
+                old_bucket_name + "/" + f,
+                new_bucket_name + "/" +
+                f.replace(old_bucket_path, new_bucket_path, 1))
 
     @property
     def client(self):
@@ -406,6 +412,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             except Exception:
                 self.log.error("Post-save hook failed on %s", os_path, exc_info=True)
 
+    @default("checkpoints_class")
     def _checkpoints_class_default(self):
         return GoogleStorageCheckpoints
 
@@ -488,7 +495,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             except NotFound:
                 del self._bucket_cache[bucket_name]
                 return False, None
-            folders = [f[:-1] for f in it.prefixes]
+            folders = it.prefixes
             return (bool(files or folders or bucket_path == ""),
                     (files, folders) if content else None)
         if not content:
@@ -615,7 +622,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
                         content=False)
                     )
             if path != "":
-                tmpl = "%s/%%s/" % self._parse_path(path)[0]
+                tmpl = "%s/%%s" % self._parse_path(path)[0]
             else:
                 tmpl = "%s"
             _, this = self._parse_path(path)
