@@ -276,7 +276,8 @@ class GoogleStorageContentManager(ContentsManager):
         if bucket_path == "" and model["type"] != "directory":
             raise web.HTTPError(403, u"You may only create directories "
                                      u"(buckets) at the root level.")
-        if bucket_path != "" and model["type"] == "directory":
+        if bucket_path != "" and model["type"] == "directory" and \
+                bucket_path[-1] != "/":
             path += "/"
         self.log.debug("Saving %s", path)
 
@@ -683,7 +684,7 @@ class GoogleStorageContentManager(ContentsManager):
             self.client.create_bucket(bucket_name)
         else:
             bucket = self._get_bucket(bucket_name, throw=True)
-            bucket.blob(bucket_path + "/").upload_from_string(
+            bucket.blob(bucket_path).upload_from_string(
                 b"", content_type="application/x-directory")
 
     debug_args = staticmethod(debug_args)

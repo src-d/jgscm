@@ -12,6 +12,59 @@ from jgscm import GoogleStorageContentManager
 
 class TestGoogleStorageContentManager(TestCase):
     BUCKET = "%s-%s" % ("jgcsm", uuid.uuid4())
+    NOTEBOOK = """{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Populating the interactive namespace from numpy and matplotlib\\n"
+     ]
+    }
+   ],
+   "source": [
+    "%pylab inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.5.1+"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}"""
 
     @classmethod
     def setUpClass(cls):
@@ -292,61 +345,7 @@ class TestGoogleStorageContentManager(TestCase):
     def test_get_notebook(self):
         bucket = self.bucket
         blob = bucket.blob("test.ipynb")
-        nb = """{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 1,
-   "metadata": {
-    "collapsed": false
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "Populating the interactive namespace from numpy and matplotlib\\n"
-     ]
-    }
-   ],
-   "source": [
-    "%pylab inline"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "metadata": {
-    "collapsed": true
-   },
-   "outputs": [],
-   "source": []
-  }
- ],
- "metadata": {
-  "kernelspec": {
-   "display_name": "Python 3",
-   "language": "python",
-   "name": "python3"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.5.1+"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 0
-}
-"""
-        blob.upload_from_string(nb.encode())
+        blob.upload_from_string(self.NOTEBOOK.encode())
         try:
             model = self.contents_manager.get(
                 self.path("test.ipynb"), type="notebook")
@@ -462,13 +461,55 @@ class TestGoogleStorageContentManager(TestCase):
             new_bucket.delete(force=True)
 
     def test_save_dir(self):
-        pass
+        self.contents_manager.save({
+            "type": "directory"
+        }, self.path("test/"))
+        bucket = self.bucket
+        blob = bucket.blob("test/")
+        self.assertTrue(blob.exists())
+        blob.delete()
 
     def test_save_file(self):
-        pass
+        self.contents_manager.save({
+            "type": "file",
+            "content": "blah-blah-blah",
+            "format": "text"
+        }, self.path("test.txt"))
+        bucket = self.bucket
+        blob = bucket.blob("test.txt")
+        self.assertTrue(blob.exists())
+        try:
+            self.assertEqual(blob.download_as_string(), b"blah-blah-blah")
+        finally:
+            blob.delete()
+
+        obj = {"one": 1, "two": [2, 3]}
+        self.contents_manager.save({
+            "type": "file",
+            "content": base64.encodebytes(pickle.dumps(obj)).decode("ascii"),
+            "format": "base64"
+        }, self.path("test.pickle"))
+        bucket = self.bucket
+        blob = bucket.blob("test.pickle")
+        self.assertTrue(blob.exists())
+        try:
+            self.assertEqual(blob.download_as_string(), pickle.dumps(obj))
+        finally:
+            blob.delete()
 
     def test_save_notebook(self):
-        pass
+        nb = nbformat.reads(self.NOTEBOOK, 4)
+        self.contents_manager.save({
+            "type": "notebook",
+            "content": nb
+        }, self.path("test.ipynb"))
+        bucket = self.bucket
+        blob = bucket.blob("test.ipynb")
+        self.assertTrue(blob.exists())
+        try:
+            self.assertEqual(blob.download_as_string(), self.NOTEBOOK.encode())
+        finally:
+            blob.delete()
 
 if __name__ == "__main__":
     main()
