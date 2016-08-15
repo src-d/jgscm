@@ -2,7 +2,7 @@ import base64
 import os
 import uuid
 
-from gcloud.exceptions import NotFound as BucketNotFound, Forbidden, BadRequest
+from gcloud.exceptions import NotFound, Forbidden, BadRequest
 from gcloud.storage import Client as GSClient, Blob
 import nbformat
 from notebook.services.contents.checkpoints import Checkpoints, \
@@ -118,13 +118,16 @@ class GoogleStorageCheckpoints(GenericCheckpointsMixin, Checkpoints):
         """Return a list of checkpoints for a given file"""
         cp = self._get_checkpoint_path(None, path)
         bucket_name, bucket_path = self.parent._parse_path(cp)
-        bucket = self.parent._get_bucket(bucket_name)
-        it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
-                               max_results=self.parent.max_list_size)
-        checkpoints = [{
-            "id": os.path.splitext(file.path)[0][-36:],
-            "last_modified": file.updated,
-        } for file in it]
+        try:
+            bucket = self.parent._get_bucket(bucket_name)
+            it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
+                                   max_results=self.parent.max_list_size)
+            checkpoints = [{
+                "id": os.path.splitext(file.path)[0][-36:],
+                "last_modified": file.updated,
+            } for file in it]
+        except NotFound:
+            return []
         checkpoints.sort(key=lambda c: c["last_modified"], reverse=True)
         self.log.debug("list_checkpoints: %s: %s", path, checkpoints)
         return checkpoints
@@ -326,6 +329,10 @@ class JupyterGoogleStorageContentManager(ContentsManager):
             path = path[1:]
         bucket_name, bucket_path = self._parse_path(path)
         bucket = self._get_bucket(bucket_name, throw=True)
+        if bucket_path == "":
+            bucket.delete()
+            del self._bucket_cache[bucket_name]
+            return
         it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
                                max_results=self.max_list_size)
         files = list(it)
@@ -406,7 +413,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         if not self.cache_buckets:
             try:
                 return self.client.get_bucket(name)
-            except BucketNotFound:
+            except NotFound:
                 if throw:
                     raise
                 return None
@@ -419,7 +426,7 @@ class JupyterGoogleStorageContentManager(ContentsManager):
         except KeyError:
             try:
                 bucket = self.client.get_bucket(name)
-            except (BadRequest, BucketNotFound):
+            except (BadRequest, NotFound):
                 if throw:
                     raise
                 return None
@@ -474,9 +481,13 @@ class JupyterGoogleStorageContentManager(ContentsManager):
                     return True, None
             # blob may not exist but at the same time be a part of a path
             max_list_size = self.max_list_size if content else 1
-            it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
-                                   max_results=max_list_size)
-            files = list(it)
+            try:
+                it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
+                                       max_results=max_list_size)
+                files = list(it)
+            except NotFound:
+                del self._bucket_cache[bucket_name]
+                return False, None
             folders = [f[:-1] for f in it.prefixes]
             return (bool(files or folders or bucket_path == ""),
                     (files, folders) if content else None)
