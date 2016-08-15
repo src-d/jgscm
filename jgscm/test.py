@@ -1,6 +1,11 @@
+import base64
 from datetime import datetime
+import pickle
 from unittest import main, TestCase
 import uuid
+
+import nbformat
+from tornado import web
 
 from jgscm import GoogleStorageContentManager
 
@@ -135,6 +140,46 @@ class TestGoogleStorageContentManager(TestCase):
             self.BUCKET + "blahblah/test"))
 
     def test_get(self):
+        model = self.contents_manager.get("/")
+        self.assertEqual(model["type"], "directory")
+        self.assertEqual(model["mimetype"], "application/x-directory")
+        self.assertEqual(model["name"], "")
+        self.assertEqual(model["path"], "")
+        self.assertEqual(model["last_modified"], "")
+        self.assertEqual(model["created"], "")
+        self.assertEqual(model["format"], "json")
+        self.assertEqual(model["writable"], True)
+        self.assertIsInstance(model["content"], list)
+        self.assertGreaterEqual(len(model["content"]), 1)
+        for m in model["content"]:
+            self.assertEqual(m["type"], "directory")
+            self.assertEqual(m["mimetype"], "application/x-directory")
+            if m["name"] == self.BUCKET:
+                self.assertEqual(m["path"], self.BUCKET + "/")
+                self.assertEqual(m["last_modified"], "")
+                self.assertEqual(m["created"], "")
+                self.assertIsNone(m["format"])
+                self.assertIsNone(m["content"])
+                self.assertEqual(m["writable"], True)
+
+        model = self.contents_manager.get(self.path(""))
+        self.assertEqual(model["type"], "directory")
+        self.assertEqual(model["mimetype"], "application/x-directory")
+        self.assertEqual(model["name"], self.BUCKET)
+        self.assertEqual(model["path"], self.BUCKET + "/")
+        self.assertEqual(model["last_modified"], "")
+        self.assertEqual(model["created"], "")
+        self.assertEqual(model["format"], "json")
+        self.assertEqual(model["content"], [])
+        self.assertEqual(model["writable"], True)
+
+        model2 = self.contents_manager.get(self.path(""), type="directory")
+        self.assertEqual(model, model2)
+        with self.assertRaises(web.HTTPError):
+            self.contents_manager.get(self.path(""), type="file")
+        with self.assertRaises(web.HTTPError):
+            self.contents_manager.get(self.path(""), type="notebook")
+
         bucket = self.bucket
         blob = bucket.blob("test/other.txt")
         blob.upload_from_string(b"contents")
@@ -152,6 +197,164 @@ class TestGoogleStorageContentManager(TestCase):
             self.assertEqual(model["content"], u"contents")
             self.assertEqual(model["format"], "text")
             self.assertEqual(model["writable"], True)
+
+            model2 = self.contents_manager.get(self.path("test/other.txt"),
+                                               type="file")
+            self.assertEqual(model, model2)
+            with self.assertRaises(web.HTTPError):
+                self.contents_manager.get(self.path("test/other.txt"),
+                                          type="directory")
+            with self.assertRaises(nbformat.reader.NotJSONError):
+                self.contents_manager.get(self.path("test/other.txt"),
+                                          type="notebook")
+        except:
+            blob.delete()
+            raise
+
+        model = self.contents_manager.get(self.path(""))
+        self.assertEqual(model["type"], "directory")
+        self.assertEqual(model["mimetype"], "application/x-directory")
+        self.assertEqual(model["name"], self.BUCKET)
+        self.assertEqual(model["path"], self.BUCKET + "/")
+        self.assertEqual(model["last_modified"], "")
+        self.assertEqual(model["created"], "")
+        self.assertEqual(model["format"], "json")
+        self.assertEqual(model["writable"], True)
+        self.assertIsInstance(model["content"], list)
+        self.assertEqual(len(model["content"]), 1)
+        model = model["content"][0]
+        self.assertEqual(model["type"], "directory")
+        self.assertEqual(model["mimetype"], "application/x-directory")
+        self.assertEqual(model["name"], "test")
+        self.assertEqual(model["path"], self.path("test/")[1:])
+        self.assertEqual(model["last_modified"], "")
+        self.assertEqual(model["created"], "")
+        self.assertIsNone(model["content"])
+        self.assertIsNone(model["format"])
+        self.assertEqual(model["writable"], True)
+
+        blob2 = bucket.blob("test/fold/another.txt")
+        blob2.upload_from_string(b"contents")
+        try:
+            model = self.contents_manager.get(self.path("test/"))
+            self.assertIsInstance(model, dict)
+            self.assertEqual(model["type"], "directory")
+            self.assertEqual(model["mimetype"], "application/x-directory")
+            self.assertEqual(model["name"], "test")
+            self.assertEqual(model["path"], self.path("test/")[1:])
+            self.assertEqual(model["last_modified"], "")
+            self.assertEqual(model["created"], "")
+            self.assertEqual(model["format"], "json")
+            self.assertEqual(model["writable"], True)
+            self.assertIsInstance(model["content"], list)
+            self.assertEqual(len(model["content"]), 2)
+            fc, dc = model["content"]
+        finally:
+            blob.delete()
+            blob2.delete()
+        self.assertIsInstance(fc, dict)
+        self.assertEqual(fc["type"], "file")
+        self.assertEqual(fc["mimetype"], "text/plain")
+        self.assertEqual(fc["name"], "other.txt")
+        self.assertEqual(fc["path"], self.path("test/other.txt")[1:])
+        self.assertIsNone(fc["content"])
+        self.assertIsNone(fc["format"])
+        self.assertEqual(fc["last_modified"], blob.updated)
+        self.assertIsInstance(fc["last_modified"], datetime)
+        self.assertEqual(fc["created"], blob.updated)
+        self.assertIsInstance(fc["created"], datetime)
+
+        self.assertIsInstance(dc, dict)
+        self.assertEqual(dc["type"], "directory")
+        self.assertEqual(dc["mimetype"], "application/x-directory")
+        self.assertEqual(dc["name"], "fold")
+        self.assertEqual(dc["path"], self.path("test/fold/")[1:])
+        self.assertIsNone(dc["content"])
+        self.assertIsNone(dc["format"])
+        self.assertEqual(dc["last_modified"], "")
+        self.assertEqual(dc["created"], "")
+
+    def test_get_base64(self):
+        bucket = self.bucket
+        blob = bucket.blob("test.pickle")
+        obj = {"one": 1, "two": [2, 3]}
+        blob.upload_from_string(pickle.dumps(obj))
+        model = self.contents_manager.get(
+            self.path("test.pickle"), format="base64")
+        self.assertEqual(model["type"], "file")
+        self.assertEqual(model["mimetype"], "application/octet-stream")
+        self.assertEqual(model["format"], "base64")
+        content = model["content"]
+        self.assertIsInstance(content, str)
+        bd = base64.decodebytes(content.encode())
+        self.assertEqual(obj, pickle.loads(bd))
+
+    def test_get_notebook(self):
+        bucket = self.bucket
+        blob = bucket.blob("test.ipynb")
+        nb = """{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Populating the interactive namespace from numpy and matplotlib\\n"
+     ]
+    }
+   ],
+   "source": [
+    "%pylab inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.5.1+"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}
+"""
+        blob.upload_from_string(nb.encode())
+        try:
+            model = self.contents_manager.get(
+                self.path("test.ipynb"), type="notebook")
+            self.assertEqual(model["type"], "notebook")
+            self.assertEqual(model["mimetype"], "application/x-ipynb+json")
+            self.assertEqual(model["format"], "json")
+            self.assertIsInstance(model["content"],
+                                  nbformat.notebooknode.NotebookNode)
         finally:
             blob.delete()
 
@@ -241,7 +444,31 @@ class TestGoogleStorageContentManager(TestCase):
             raise
         blob = bucket.blob("test1/dir/other.txt")
         self.assertTrue(blob.exists())
-        blob.delete()
+
+        new_bucket = self.contents_manager.client.bucket(
+            "jgscm-%s-new" % uuid.uuid4())
+        new_bucket.create()
+        try:
+            self.contents_manager.rename_file(
+                self.path("test1/"), new_bucket.name + "/" + "test/")
+            self.assertFalse(blob.exists())
+        except:
+            blob.delete()
+            new_bucket.delete(force=True)
+            raise
+        try:
+            self.assertTrue(new_bucket.blob("test/dir/other.txt").exists())
+        finally:
+            new_bucket.delete(force=True)
+
+    def test_save_dir(self):
+        pass
+
+    def test_save_file(self):
+        pass
+
+    def test_save_notebook(self):
+        pass
 
 if __name__ == "__main__":
     main()

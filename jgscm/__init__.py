@@ -384,7 +384,7 @@ class GoogleStorageContentManager(ContentsManager):
         for ob in old_blobs:
             old_bucket.copy_blob(ob, new_bucket, new_bucket_path +
                                  self._get_blob_name(ob))
-            old_bucket.delete_blob(old_blob)
+            ob.delete()
         for f in folders:
             self.rename_file(
                 old_bucket_name + "/" + f,
@@ -470,7 +470,7 @@ class GoogleStorageContentManager(ContentsManager):
     def _fetch(self, path, content=True):
         if path == "":
             buckets = self.client.list_buckets()
-            return True, ([], [b.name for b in buckets])
+            return True, ([], [b.name + "/" for b in buckets])
         try:
             bucket_name, bucket_path = self._parse_path(path)
         except ValueError:
@@ -559,7 +559,7 @@ class GoogleStorageContentManager(ContentsManager):
 
         if content:
             content, format = self._read_file(blob, format)
-            if model["mimetype"] is None:
+            if model["mimetype"] == "text/plain":
                 default_mime = {
                     "text": "text/plain",
                     "base64": "application/octet-stream"
@@ -590,6 +590,7 @@ class GoogleStorageContentManager(ContentsManager):
         if content:
             nb = self._read_notebook(blob)
             model["content"] = nb
+            model["mimetype"] = "application/x-ipynb+json"
             model["format"] = "json"
             self.validate_notebook_model(model)
         return model
@@ -608,8 +609,7 @@ class GoogleStorageContentManager(ContentsManager):
             "content": None,
             "format": None,
             "mimetype": "application/x-directory",
-            "writable": path and (
-                members is not None or not self.is_hidden(path))
+            "writable": (members is not None or not self.is_hidden(path))
         }
         if content:
             blobs, folders = members
