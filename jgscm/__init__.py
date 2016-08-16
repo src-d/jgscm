@@ -402,6 +402,9 @@ class GoogleStorageContentManager(ContentsManager):
 
     @property
     def client(self):
+        """
+        :return: used instance of :class:`gcloud.storage.Client`.
+        """
         try:
             return self._client
         except AttributeError:
@@ -426,6 +429,13 @@ class GoogleStorageContentManager(ContentsManager):
         return GoogleStorageCheckpoints
 
     def _get_bucket(self, name, throw=False):
+        """
+        Get the bucket by it's name. Uses cache by default.
+        :param name: bucket name.
+        :param throw: If True raises NotFound exception, otherwise, returns
+                      None.
+        :return: instance of :class:`gcloud.storage.Bucket` or None.
+        """
         if not self.cache_buckets:
             try:
                 return self.client.get_bucket(name)
@@ -451,6 +461,11 @@ class GoogleStorageContentManager(ContentsManager):
 
     @staticmethod
     def _parse_path(path):
+        """
+        Splits the path into bucket name and path inside the bucket.
+        :param path: string to split.
+        :return: tuple(bucket name, bucket path).
+        """
         try:
             bucket, name = path.split("/", 1)
         except ValueError:
@@ -460,6 +475,11 @@ class GoogleStorageContentManager(ContentsManager):
 
     @staticmethod
     def _get_blob_path(blob):
+        """
+        Gets blob path.
+        :param blob: instance of :class:`gcloud.storage.Blob`.
+        :return: path string.
+        """
         path = url_unescape(blob.path)
         path = path[3:]  # /b/
         path = path.replace("/o/", "/", 1)
@@ -467,6 +487,11 @@ class GoogleStorageContentManager(ContentsManager):
     
     @staticmethod
     def _get_blob_name(blob):
+        """
+        Gets blob name (last part of the path).
+        :param blob: instance of :class:`gcloud.storage.Blob`.
+        :return: name string.
+        """
         if isinstance(blob, Blob):
             return url_unescape(blob.path).rsplit("/", 1)[-1]
         assert isinstance(blob, str)
@@ -476,12 +501,24 @@ class GoogleStorageContentManager(ContentsManager):
 
     @staticmethod
     def _get_dir_name(path):
+        """
+        Extracts directory name like os.path.dirname.
+        :param path: GCS path string.
+        :return: directory name string.
+        """
         if path.endswith("/"):
             path = path[:-1]
         return path.rsplit("/", 1)[-1]
 
     @debug_args
     def _fetch(self, path, content=True):
+        """
+        Retrieves the blob by it's path.
+        :param path: blob path or directory name.
+        :param content: If False, just check if path exists.
+        :return: tuple(exists Bool, :class:`gcloud.storage.Blob` or
+                 tuple(file [Blob], folders list)).
+        """
         if path == "":
             buckets = self.client.list_buckets()
             return True, ([], [b.name + "/" for b in buckets])
@@ -518,7 +555,7 @@ class GoogleStorageContentManager(ContentsManager):
         return blob is not None, blob
 
     def _base_model(self, blob):
-        """Build the common base of a contents model"""
+        """Builds the common base of a contents model"""
         last_modified = blob.updated
         created = last_modified
         model = {
@@ -534,7 +571,7 @@ class GoogleStorageContentManager(ContentsManager):
         return model
     
     def _read_file(self, blob, format):
-        """Read a non-notebook file.
+        """Reads a non-notebook file.
 
         blob: instance of :class:`gcloud.storage.Blob`.
         format:
@@ -559,7 +596,7 @@ class GoogleStorageContentManager(ContentsManager):
         return base64.encodebytes(bcontent).decode("ascii"), "base64"
     
     def _file_model(self, blob, content=True, format=None):
-        """Build a model for a file
+        """Builds a model for a file
 
         if content is requested, include the file contents.
 
@@ -588,13 +625,18 @@ class GoogleStorageContentManager(ContentsManager):
         return model
 
     def _read_notebook(self, blob):
+        """
+        Reads a notebook file from GCS blob.
+        :param blob: :class:`gcloud.storage.Blob` instance.
+        :return: :class:`nbformat.notebooknode.NotebookNode` instance.
+        """
         data = blob.download_as_string().decode("utf-8")
         nb = nbformat.reads(data, as_version=4)
         self.mark_trusted_cells(nb, self._get_blob_path(blob))
         return nb
 
     def _notebook_model(self, blob, content=True):
-        """Build a notebook model
+        """Builds a notebook model.
 
         if content is requested, the notebook content will be populated
         as a JSON structure (not double-serialized)
@@ -610,7 +652,7 @@ class GoogleStorageContentManager(ContentsManager):
         return model
     
     def _dir_model(self, path, members, content=True):
-        """Build a model for a directory
+        """Builds a model for a directory
 
         if content is requested, will include a listing of the directory
         """
@@ -651,6 +693,12 @@ class GoogleStorageContentManager(ContentsManager):
         return model
 
     def _save_notebook(self, path, nb):
+        """
+        Uploads notebook to GCS.
+        :param path: blob path.
+        :param nb: :class:`nbformat.notebooknode.NotebookNode` instance.
+        :return: created :class:`gcloud.storage.Blob`.
+        """
         bucket_name, bucket_path = self._parse_path(path)
         bucket = self._get_bucket(bucket_name, throw=True)
         data = nbformat.writes(nb, version=nbformat.NO_CONVERT)
@@ -659,7 +707,13 @@ class GoogleStorageContentManager(ContentsManager):
         return blob
 
     def _save_file(self, path, content, format):
-        """Save content of a generic file."""
+        """Uploads content of a generic file to GCS.
+        :param: path blob path.
+        :param: content file contents string.
+        :param: format the description of the input format, can be either
+                "text" or "base64".
+        :return: created :class:`gcloud.storage.Blob`.
+        """
         bucket_name, bucket_path = self._parse_path(path)
         bucket = self._get_bucket(bucket_name, throw=True)
 
@@ -684,7 +738,7 @@ class GoogleStorageContentManager(ContentsManager):
         return blob
 
     def _save_directory(self, path, model):
-        """create a directory"""
+        """Creates a directory in GCS."""
         exists, obj = self._fetch(path)
         if exists:
             if isinstance(obj, Blob):
