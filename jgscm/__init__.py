@@ -532,6 +532,8 @@ class GoogleStorageContentManager(ContentsManager):
             return True, None
         if bucket is None:
             return False, None
+        if bucket_path == "" and not content:
+            return True, None
         if bucket_path == "" or bucket_path.endswith("/"):
             if bucket_path != "":
                 exists = bucket.blob(bucket_path).exists()
