@@ -192,6 +192,24 @@ class TestGoogleStorageContentManager(TestCase):
         self.assertTrue(self.contents_manager.is_hidden(
             self.BUCKET + "blahblah/test"))
 
+        self.contents_manager.hide_dotted_blobs = True
+        self.assertTrue(self.contents_manager.is_hidden(self.path(
+            ".test")))
+        self.assertTrue(self.contents_manager.is_hidden(self.path(
+            ".test/")))
+        self.contents_manager.hide_dotted_blobs = False
+        self.assertFalse(self.contents_manager.is_hidden(self.path(
+            ".test")))
+        self.assertFalse(self.contents_manager.is_hidden(self.path(
+            ".test/")))
+        self.contents_manager.hide_dotted_blobs = True
+        self.assertFalse(self.contents_manager.is_hidden(self.path(
+            ".test/other")))
+        self.contents_manager.hide_dotted_blobs = False
+        self.assertFalse(self.contents_manager.is_hidden(self.path(
+            ".test/other")))
+        self.contents_manager.hide_dotted_blobs = True
+
     def test_get(self):
         model = self.contents_manager.get("/")
         self.assertEqual(model["type"], "directory")

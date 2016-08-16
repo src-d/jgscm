@@ -1,0 +1,5 @@
+gcloud==0.17.0
+notebook==4.2.2
+nbformat==4.1.0
+tornado==4.4.1
+traitlets==4.2.2

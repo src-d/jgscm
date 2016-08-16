@@ -165,6 +165,9 @@ class GoogleStorageContentManager(ContentsManager):
     cache_buckets = Bool(True, config=True,
                          help="Value indicating whether to cache the bucket "
                               "objects for faster operations.")
+    hide_dotted_blobs = Bool(True, config=True,
+                             help="Consider blobs which names start with dot "
+                                  "as hidden.")
     # redefine untitled_directory to change the default value
     untitled_directory = Unicode(
         "untitled-folder", config=True,
@@ -210,7 +213,12 @@ class GoogleStorageContentManager(ContentsManager):
             bucket = self._get_bucket(bucket_name)
         except Forbidden:
             return True
-        return bucket is None
+        if bucket is None:
+            return True
+        if self.hide_dotted_blobs and \
+                self._get_blob_name(bucket_path).startswith("."):
+            return True
+        return False
 
     @debug_args
     def file_exists(self, path=""):
@@ -459,7 +467,12 @@ class GoogleStorageContentManager(ContentsManager):
     
     @staticmethod
     def _get_blob_name(blob):
-        return url_unescape(blob.path).rsplit("/", 1)[-1]
+        if isinstance(blob, Blob):
+            return url_unescape(blob.path).rsplit("/", 1)[-1]
+        assert isinstance(blob, str)
+        if blob.endswith("/"):
+            blob = blob[:-1]
+        return blob.rsplit("/", 1)[-1]
 
     @staticmethod
     def _get_dir_name(path):
