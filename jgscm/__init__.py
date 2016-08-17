@@ -452,6 +452,8 @@ class GoogleStorageContentManager(ContentsManager):
         except KeyError:
             try:
                 bucket = self.client.get_bucket(name)
+            except BrokenPipeError:
+                return self._get_bucket(name, throw)
             except (BadRequest, NotFound):
                 if throw:
                     raise
@@ -520,8 +522,11 @@ class GoogleStorageContentManager(ContentsManager):
                  tuple(file [Blob], folders list)).
         """
         if path == "":
-            buckets = self.client.list_buckets()
-            return True, ([], [b.name + "/" for b in buckets])
+            try:
+                buckets = self.client.list_buckets()
+                return True, ([], [b.name + "/" for b in buckets])
+            except BrokenPipeError:
+                return self._fetch(path, content)
         try:
             bucket_name, bucket_path = self._parse_path(path)
         except ValueError:
@@ -536,7 +541,10 @@ class GoogleStorageContentManager(ContentsManager):
             return True, None
         if bucket_path == "" or bucket_path.endswith("/"):
             if bucket_path != "":
-                exists = bucket.blob(bucket_path).exists()
+                try:
+                    exists = bucket.blob(bucket_path).exists()
+                except BrokenPipeError:
+                    return self._fetch(path, content)
                 if exists and not content:
                     return True, None
             # blob may not exist but at the same time be a part of a path
@@ -544,7 +552,10 @@ class GoogleStorageContentManager(ContentsManager):
             try:
                 it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
                                        max_results=max_list_size)
-                files = list(it)
+                try:
+                    files = list(it)
+                except BrokenPipeError:
+                    return self._fetch(path, content)
             except NotFound:
                 del self._bucket_cache[bucket_name]
                 return False, None
@@ -553,7 +564,10 @@ class GoogleStorageContentManager(ContentsManager):
                     (files, folders) if content else None)
         if not content:
             return bucket.blob(bucket_path).exists, None
-        blob = bucket.get_blob(bucket_path)
+        try:
+            blob = bucket.get_blob(bucket_path)
+        except BrokenPipeError:
+            return self._fetch(path, content)
         return blob is not None, blob
 
     def _base_model(self, blob):
