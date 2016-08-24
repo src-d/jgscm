@@ -1,4 +1,5 @@
 import base64
+from itertools import islice
 import os
 import uuid
 
@@ -125,7 +126,7 @@ class GoogleStorageCheckpoints(GenericCheckpointsMixin, Checkpoints):
             checkpoints = [{
                 "id": os.path.splitext(file.path)[0][-36:],
                 "last_modified": file.updated,
-            } for file in it]
+            } for file in islice(it, self.parent.max_list_size)]
         except NotFound:
             return []
         checkpoints.sort(key=lambda c: c["last_modified"], reverse=True)
@@ -161,7 +162,7 @@ class GoogleStorageContentManager(ContentsManager):
              "for authorization. If you do not set this parameter, "
              "gcloud will be OK if the default project exists."
     )
-    max_list_size = Int(1024, config=True, help="list_blobs() limit")
+    max_list_size = Int(128, config=True, help="list_blobs() limit")
     cache_buckets = Bool(True, config=True,
                          help="Value indicating whether to cache the bucket "
                               "objects for faster operations.")
@@ -340,7 +341,7 @@ class GoogleStorageContentManager(ContentsManager):
             return
         it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
                                max_results=self.max_list_size)
-        files = list(it)
+        files = list(islice(it, self.max_list_size))
         folders = it.prefixes
         bucket.delete_blobs(files)
         for folder in folders:
@@ -367,7 +368,7 @@ class GoogleStorageContentManager(ContentsManager):
                 new_bucket_path += "/"
             it = old_bucket.list_blobs(prefix=old_bucket_path, delimiter="/",
                                        max_results=self.max_list_size)
-            old_blobs = list(it)
+            old_blobs = list(islice(it, self.max_list_size))
             folders = it.prefixes
             for ob in old_blobs:
                 old_bucket.rename_blob(
@@ -388,7 +389,7 @@ class GoogleStorageContentManager(ContentsManager):
             new_bucket_path += "/"
         it = old_bucket.list_blobs(prefix=old_bucket_path, delimiter="/",
                                    max_results=self.max_list_size)
-        old_blobs = list(it)
+        old_blobs = list(islice(it, self.max_list_size))
         folders = it.prefixes
         for ob in old_blobs:
             old_bucket.copy_blob(ob, new_bucket, new_bucket_path +
@@ -553,7 +554,7 @@ class GoogleStorageContentManager(ContentsManager):
                 it = bucket.list_blobs(prefix=bucket_path, delimiter="/",
                                        max_results=max_list_size)
                 try:
-                    files = list(it)
+                    files = list(islice(it, max_list_size))
                 except BrokenPipeError:
                     return self._fetch(path, content)
             except NotFound:
