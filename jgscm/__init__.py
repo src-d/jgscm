@@ -564,7 +564,7 @@ class GoogleStorageContentManager(ContentsManager):
             return (bool(files or folders or bucket_path == ""),
                     (files, folders) if content else None)
         if not content:
-            return bucket.blob(bucket_path).exists, None
+            return bucket.blob(bucket_path).exists(), None
         try:
             blob = bucket.get_blob(bucket_path)
         except BrokenPipeError:
