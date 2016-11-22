@@ -23,7 +23,7 @@ pip install jgscm
 You must point to jgscm in [Jupyter settings](http://jupyter-notebook.readthedocs.io/en/latest/config.html).
 Usually you'd need to edit `~/.jupyter/jupyter_notebook_config.py` and
 insert the following:
-```
+```python
 c.NotebookApp.contents_manager_class = 'jgscm.GoogleStorageContentManager'
 # c.GoogleStorageContentManager.project = ''
 # c.GoogleStorageContentManager.keyfile = ''
@@ -50,6 +50,12 @@ GCS API invocations can take some time. While JGSCM does it's best to reduce
 the number of calls, they still can introduce substantial delays in
 Jupyter UI. Please be patient.
 
+There is an ability to specify the starting path instead of the buckets listing:
+```python
+c.GoogleStorageContentManager.default_path = 'path/without/starting/slash'
+```
+(--notebook-dir does not work apparently).
+
 Checkpoints
 -----------
 Checkpoints are stored in .ipynb_checkpoints directory as usual. That
@@ -74,7 +80,7 @@ Google Cloud (`gcloud init`). If this is not the case, you can explicitly
 set the Google Cloud project and authentication credentials.
 
 Open Jupyter configuration and set
-```
+```python
 c.GoogleStorageContentManager.project = '...'
 c.GoogleStorageContentManager.keyfile = '...'
 ```

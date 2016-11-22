@@ -173,6 +173,8 @@ class GoogleStorageContentManager(ContentsManager):
     untitled_directory = Unicode(
         "untitled-folder", config=True,
         help="The base name used when creating untitled directories.")
+    default_path = Unicode(
+        "", config=True, help="The default path to open.")
     post_save_hook = Any(None, config=True,
                          help="""Python callable or importstring thereof
 
@@ -253,6 +255,8 @@ class GoogleStorageContentManager(ContentsManager):
             path = self._get_blob_path(obj)
         elif path.startswith("/"):
             path = path[1:]
+        if not path:
+            path = self.default_path
         if "/" not in path or path.endswith("/") or type == "directory":
             if type not in (None, "directory"):
                 raise web.HTTPError(
