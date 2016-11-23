@@ -501,7 +501,7 @@ class GoogleStorageContentManager(ContentsManager):
         """
         if isinstance(blob, Blob):
             return url_unescape(blob.path).rsplit("/", 1)[-1]
-        assert isinstance(blob, str)
+        assert isinstance(blob, (unicode, str))
         if blob.endswith("/"):
             blob = blob[:-1]
         return blob.rsplit("/", 1)[-1]
