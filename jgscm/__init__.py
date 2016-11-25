@@ -285,6 +285,8 @@ class GoogleStorageContentManager(ContentsManager):
             raise web.HTTPError(400, u"No file type provided")
         if "content" not in model and model["type"] != "directory":
             raise web.HTTPError(400, u"No file content provided")
+        if "/" not in path and self.default_path:
+            path = "%s/%s" % (self.default_path, path)
         bucket_name, bucket_path = self._parse_path(path)
         if bucket_path == "" and model["type"] != "directory":
             raise web.HTTPError(403, u"You may only create directories "
