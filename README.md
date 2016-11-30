@@ -12,7 +12,7 @@ ordinary folder where users can create files, subdirectories and notebooks.
 Besides, snapshots are completely supported too.
 
 Warning: this should be considered alpha. While everything should work
-well and all tests are passed, some stupid bugs may exist. For example,
+well and all tests are passed, there might be some bugs. Also,
 work under Python 2.7 was not tested.
 
 Installation
@@ -48,13 +48,13 @@ This behavior is similar to some old-style source control systems.
 
 GCS API invocations can take some time. While JGSCM does it's best to reduce
 the number of calls, they still can introduce substantial delays in
-Jupyter UI. Please be patient.
+Jupyter UI. Please, be patient.
 
 There is an ability to specify the starting path instead of the buckets listing:
 ```python
 c.GoogleStorageContentManager.default_path = 'path/without/starting/slash'
 ```
-(--notebook-dir does not work apparently).
+(`--notebook-dir` does not seem to work).
 
 Checkpoints
 -----------
@@ -68,7 +68,7 @@ The name of each checkpoint is \<notebook name\>-[UUID4](https://en.wikipedia.or
 Hidden files and directories
 ----------------------------
 As with any UNIX filesystem, files and directories with names starting
-with dot "." are considered hidden by default. You can change this by
+with dot "`.`" are considered hidden by default. You can change this by
 setting `c.GoogleStorageContentManager.hide_dotted_blobs` to `False`.
 
 Projects and keyfiles
