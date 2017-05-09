@@ -5,8 +5,8 @@ import os
 import sys
 import uuid
 
-from gcloud.exceptions import NotFound, Forbidden, BadRequest
-from gcloud.storage import Client as GSClient, Blob
+from google.cloud.exceptions import NotFound, Forbidden, BadRequest
+from google.cloud.storage import Client as GSClient, Blob
 import nbformat
 from notebook.services.contents.checkpoints import Checkpoints, \
     GenericCheckpointsMixin
@@ -162,14 +162,14 @@ class GoogleStorageContentManager(ContentsManager):
     project = Unicode(
         "", config=True,
         help="The name of the project in Google Cloud to use. If you do not "
-             "set this parameter, gcloud will pick the default project "
+             "set this parameter, google.cloud will pick the default project "
              "from the execution context if it exists."
     )
     keyfile = Unicode(
         "", config=True,
         help="The path to the Google Cloud API JSON keyfile which is needed "
              "for authorization. If you do not set this parameter, "
-             "gcloud will be OK if the default project exists."
+             "google.cloud will be OK if the default project exists."
     )
     max_list_size = Int(128, config=True, help="list_blobs() limit")
     cache_buckets = Bool(True, config=True,
@@ -419,7 +419,7 @@ class GoogleStorageContentManager(ContentsManager):
     @property
     def client(self):
         """
-        :return: used instance of :class:`gcloud.storage.Client`.
+        :return: used instance of :class:`google.cloud.storage.Client`.
         """
         try:
             return self._client
@@ -450,7 +450,7 @@ class GoogleStorageContentManager(ContentsManager):
         :param name: bucket name.
         :param throw: If True raises NotFound exception, otherwise, returns
                       None.
-        :return: instance of :class:`gcloud.storage.Bucket` or None.
+        :return: instance of :class:`google.cloud.storage.Bucket` or None.
         """
         if not self.cache_buckets:
             try:
@@ -498,7 +498,7 @@ class GoogleStorageContentManager(ContentsManager):
     def _get_blob_path(blob):
         """
         Gets blob path.
-        :param blob: instance of :class:`gcloud.storage.Blob`.
+        :param blob: instance of :class:`google.cloud.storage.Blob`.
         :return: path string.
         """
         path = url_unescape(blob.path)
@@ -510,7 +510,7 @@ class GoogleStorageContentManager(ContentsManager):
     def _get_blob_name(blob):
         """
         Gets blob name (last part of the path).
-        :param blob: instance of :class:`gcloud.storage.Blob`.
+        :param blob: instance of :class:`google.cloud.storage.Blob`.
         :return: name string.
         """
         if isinstance(blob, Blob):
@@ -537,7 +537,7 @@ class GoogleStorageContentManager(ContentsManager):
         Retrieves the blob by it's path.
         :param path: blob path or directory name.
         :param content: If False, just check if path exists.
-        :return: tuple(exists Bool, :class:`gcloud.storage.Blob` or
+        :return: tuple(exists Bool, :class:`google.cloud.storage.Blob` or
                  tuple(file [Blob], folders list)).
         """
         if path == "":
@@ -620,7 +620,7 @@ class GoogleStorageContentManager(ContentsManager):
     def _read_file(self, blob, format):
         """Reads a non-notebook file.
 
-        blob: instance of :class:`gcloud.storage.Blob`.
+        blob: instance of :class:`google.cloud.storage.Blob`.
         format:
           If "text", the contents will be decoded as UTF-8.
           If "base64", the raw bytes contents will be encoded as base64.
@@ -674,7 +674,7 @@ class GoogleStorageContentManager(ContentsManager):
     def _read_notebook(self, blob):
         """
         Reads a notebook file from GCS blob.
-        :param blob: :class:`gcloud.storage.Blob` instance.
+        :param blob: :class:`google.cloud.storage.Blob` instance.
         :return: :class:`nbformat.notebooknode.NotebookNode` instance.
         """
         data = blob.download_as_string().decode("utf-8")
@@ -744,7 +744,7 @@ class GoogleStorageContentManager(ContentsManager):
         Uploads notebook to GCS.
         :param path: blob path.
         :param nb: :class:`nbformat.notebooknode.NotebookNode` instance.
-        :return: created :class:`gcloud.storage.Blob`.
+        :return: created :class:`google.cloud.storage.Blob`.
         """
         bucket_name, bucket_path = self._parse_path(path)
         bucket = self._get_bucket(bucket_name, throw=True)
@@ -759,7 +759,7 @@ class GoogleStorageContentManager(ContentsManager):
         :param: content file contents string.
         :param: format the description of the input format, can be either
                 "text" or "base64".
-        :return: created :class:`gcloud.storage.Blob`.
+        :return: created :class:`google.cloud.storage.Blob`.
         """
         bucket_name, bucket_path = self._parse_path(path)
         bucket = self._get_bucket(bucket_name, throw=True)

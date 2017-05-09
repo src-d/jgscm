@@ -1,4 +1,4 @@
-gcloud==0.17.0
+google-cloud==0.25.0
 notebook==4.2.2
 nbformat==4.1.0
 tornado==4.4.1
