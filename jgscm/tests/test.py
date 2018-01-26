@@ -278,7 +278,7 @@ class TestGoogleStorageContentManager(TestCase):
             with self.assertRaises(nbformat.reader.NotJSONError):
                 self.contents_manager.get(self.path("test/other.txt"),
                                           type="notebook")
-        except:
+        except:  # nopep8
             blob.delete()
             raise
 
@@ -382,7 +382,7 @@ class TestGoogleStorageContentManager(TestCase):
         try:
             self.contents_manager.delete_file(self.path("test/other.txt"))
             self.assertFalse(blob.exists())
-        except:
+        except:  # nopep8
             blob.delete()
             raise
         self.contents_manager.delete_file(self.BUCKET)
@@ -394,7 +394,7 @@ class TestGoogleStorageContentManager(TestCase):
             self.contents_manager.delete_file(self.path("test/other/"))
             self.assertFalse(blob.exists())
             self.assertFalse(bucket.blob("test/").exists())
-        except:
+        except:  # nopep8
             blob.delete()
             raise
         blob1 = bucket.blob("test/other.txt")
@@ -406,7 +406,7 @@ class TestGoogleStorageContentManager(TestCase):
             self.assertFalse(blob1.exists())
             self.assertFalse(blob2.exists())
             self.assertFalse(bucket.blob("test/").exists())
-        except:
+        except:  # nopep8
             try:
                 blob1.delete()
             finally:
@@ -421,7 +421,7 @@ class TestGoogleStorageContentManager(TestCase):
             self.contents_manager.rename_file(self.path("test/other.txt"),
                                               self.path("test1/other1.txt"))
             self.assertFalse(blob.exists())
-        except:
+        except:  # nopep8
             blob.delete()
             raise
         blob = bucket.blob("test1/other1.txt")
@@ -437,7 +437,7 @@ class TestGoogleStorageContentManager(TestCase):
                                               self.path("test1/"))
             self.assertFalse(blob1.exists())
             self.assertFalse(blob2.exists())
-        except:
+        except:  # nopep8
             try:
                 blob1.delete()
             finally:
@@ -456,7 +456,7 @@ class TestGoogleStorageContentManager(TestCase):
             self.contents_manager.rename_file(self.path("test/"),
                                               self.path("test1/"))
             self.assertFalse(blob.exists())
-        except:
+        except:  # nopep8
             blob.delete()
             raise
         blob = bucket.blob("test1/dir/other.txt")
@@ -469,7 +469,7 @@ class TestGoogleStorageContentManager(TestCase):
             self.contents_manager.rename_file(
                 self.path("test1/"), new_bucket.name + "/" + "test/")
             self.assertFalse(blob.exists())
-        except:
+        except:  # nopep8
             blob.delete()
             new_bucket.delete(force=True)
             raise
@@ -528,6 +528,7 @@ class TestGoogleStorageContentManager(TestCase):
             self.assertEqual(blob.download_as_string(), self.NOTEBOOK.encode())
         finally:
             blob.delete()
+
 
 if __name__ == "__main__":
     main()

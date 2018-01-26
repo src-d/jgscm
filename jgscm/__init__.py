@@ -10,6 +10,11 @@ from google.cloud.storage import Client as GSClient, Blob
 import nbformat
 from notebook.services.contents.checkpoints import Checkpoints, \
     GenericCheckpointsMixin
+try:
+    import notebook.transutils
+    # https://github.com/jupyter/notebook/issues/3056
+except ImportError:
+    pass
 from notebook.services.contents.manager import ContentsManager
 from tornado import web
 from tornado.escape import url_unescape
@@ -38,7 +43,7 @@ class GoogleStorageCheckpoints(GenericCheckpointsMixin, Checkpoints):
         "", config=True, help="The bucket name where to keep file checkpoints."
                               " If empty, the current bucket is used."
     )
-    
+
     def create_file_checkpoint(self, content, format, path):
         """Create a checkpoint of the current state of a file
 
@@ -306,7 +311,7 @@ class GoogleStorageContentManager(ContentsManager):
         self.log.debug("Saving %s", path)
 
         self.run_pre_save_hook(model=model, path=path)
-        
+
         try:
             if model["type"] == "notebook":
                 nb = nbformat.from_dict(model["content"])
@@ -505,7 +510,7 @@ class GoogleStorageContentManager(ContentsManager):
         path = path[3:]  # /b/
         path = path.replace("/o/", "/", 1)
         return path
-    
+
     @staticmethod
     def _get_blob_name(blob):
         """
@@ -616,7 +621,7 @@ class GoogleStorageContentManager(ContentsManager):
             "writable": True
         }
         return model
-    
+
     def _read_file(self, blob, format):
         """Reads a non-notebook file.
 
@@ -641,7 +646,7 @@ class GoogleStorageContentManager(ContentsManager):
                         reason="bad format",
                     )
         return base64.encodebytes(bcontent).decode("ascii"), "base64"
-    
+
     def _file_model(self, blob, content=True, format=None):
         """Builds a model for a file
 
@@ -697,7 +702,7 @@ class GoogleStorageContentManager(ContentsManager):
             model["format"] = "json"
             self.validate_notebook_model(model)
         return model
-    
+
     def _dir_model(self, path, members, content=True):
         """Builds a model for a directory
 

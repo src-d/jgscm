@@ -12,7 +12,7 @@ setup(
     download_url="https://github.com/src-d/jgscm",
     packages=["jgscm"],
     keywords=["jupyter", "ipython", "gcloud", "gcs"],
-    install_requires=["gcloud>=0.17.0", "notebook>=4.2", "nbformat>=4.1",
+    install_requires=["google-cloud>=0.32.0", "notebook>=4.2", "nbformat>=4.1",
                       "tornado>=4", "traitlets>=4.2"],
     package_data={"": ["requirements.txt", "LICENSE", "README.md"]},
     classifiers=[
