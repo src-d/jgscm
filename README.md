@@ -1,19 +1,15 @@
-Jupyter support for Google Cloud Storage
+Jupyter support for Google Cloud Storage [![PyPI](https://img.shields.io/pypi/v/jgscm.svg)](https://pypi.python.org/pypi/jgscm) [![Build Status](https://travis-ci.org/src-d/jgscm.svg?branch=master)](https://travis-ci.org/src-d/jgscm) [![codecov](https://codecov.io/github/src-d/jgscm/coverage.svg)](https://codecov.io/gh/src-d/jgscm)
 ========================================
 
 This project allows working with Jupyter notebooks in Google Cloud Storage.
 It aims to be a complete drop-in replacement for the stock filesystem
 [ContentsManager](http://jupyter-notebook.readthedocs.io/en/latest/extending/contents.html).
-Thus JGSCM is only compatible with modern IPython/Jupyter stack (version 4 and above).
+Thus JGSCM is only compatible with a relatively modern IPython/Jupyter stack (version 4 and above).
 
 The root level of the virtual file system is the list of buckets, which
 are presented as directories. In turn, each bucket is presented as an
 ordinary folder where users can create files, subdirectories and notebooks.
 Besides, snapshots are completely supported too.
-
-Warning: this should be considered alpha. While everything should work
-well and all tests are passed, there might be some bugs. Also,
-work under Python 2.7 was not tested.
 
 Installation
 ------------
@@ -30,6 +26,14 @@ c.NotebookApp.contents_manager_class = 'jgscm.GoogleStorageContentManager'
 ```
 `project` and `keyfile` must be set if [gcloud](https://github.com/GoogleCloudPlatform/gcloud-python)
 cannot determine the defaults. Read more about it in one of the next sections.
+
+Contributions
+-------------
+...are welcome! See [CONTRIBUTING](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
+
+License
+-------
+MIT, see [LICENSE](LICENSE.md).
 
 Usage
 -----
@@ -95,8 +99,4 @@ Testing
 ```
 PYTHONPATH=`pwd` python3 -W ignore::DeprecationWarning jgscm/tests/test.py
 ```
-JGSCM writes logs on DEBUG logs level (`c.Application.log_level = "DEBUG"`).
-
-License
--------
-MIT, see [LICENSE](LICENSE).
+JGSCM writes logs at DEBUG verbosity level (`c.Application.log_level = "DEBUG"`).
