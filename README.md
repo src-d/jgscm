@@ -1,7 +1,7 @@
-Jupyter support for Google Cloud Storage [![PyPI](https://img.shields.io/pypi/v/jgscm.svg)](https://pypi.python.org/pypi/jgscm) [![Build Status](https://travis-ci.org/src-d/jgscm.svg?branch=master)](https://travis-ci.org/src-d/jgscm) [![codecov](https://codecov.io/github/src-d/jgscm/coverage.svg)](https://codecov.io/gh/src-d/jgscm)
+Jupyter FS in Google Cloud Storage [![PyPI](https://img.shields.io/pypi/v/jgscm.svg)](https://pypi.python.org/pypi/jgscm) [![Build Status](https://travis-ci.org/src-d/jgscm.svg?branch=master)](https://travis-ci.org/src-d/jgscm) [![codecov](https://codecov.io/github/src-d/jgscm/coverage.svg)](https://codecov.io/gh/src-d/jgscm)
 ========================================
 
-This project allows working with Jupyter notebooks in Google Cloud Storage.
+Jupyter Google Storage Contents Manager allows working with Jupyter notebooks directly in Google Cloud Storage.
 It aims to be a complete drop-in replacement for the stock filesystem
 [ContentsManager](http://jupyter-notebook.readthedocs.io/en/latest/extending/contents.html).
 Thus JGSCM is only compatible with a relatively modern IPython/Jupyter stack (version 4 and above).
