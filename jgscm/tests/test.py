@@ -3,11 +3,20 @@ from datetime import datetime
 import pickle
 from unittest import main, TestCase
 import uuid
+import sys
 
 import nbformat
 from tornado import web
 
 from jgscm import GoogleStorageContentManager
+
+if sys.version_info[0] == 2:
+    import socket
+    BrokenPipeError = socket.error
+    base64.encodebytes = base64.encodestring
+    base64.decodebytes = base64.decodestring
+else:
+    unicode = str
 
 
 class TestGoogleStorageContentManager(TestCase):
@@ -356,7 +365,7 @@ class TestGoogleStorageContentManager(TestCase):
         self.assertEqual(model["mimetype"], "application/octet-stream")
         self.assertEqual(model["format"], "base64")
         content = model["content"]
-        self.assertIsInstance(content, str)
+        self.assertIsInstance(content, unicode)
         bd = base64.decodebytes(content.encode())
         self.assertEqual(obj, pickle.loads(bd))
 

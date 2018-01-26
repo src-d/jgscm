@@ -24,6 +24,8 @@ from traitlets import Any, Bool, Int, Unicode, default
 if sys.version_info[0] == 2:
     import socket
     BrokenPipeError = socket.error
+    base64.encodebytes = base64.encodestring
+    base64.decodebytes = base64.decodestring
 else:
     unicode = str
 
