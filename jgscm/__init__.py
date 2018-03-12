@@ -210,6 +210,7 @@ class GoogleStorageContentManager(ContentsManager):
                          )
 
     def __init__(self, *args, **kwargs):
+        # Stub for the GSClient instance (set lazily by the client property).
         self._client = None
         super(GoogleStorageContentManager, self).__init__(*args, **kwargs)
 
@@ -465,18 +466,18 @@ class GoogleStorageContentManager(ContentsManager):
     def _checkpoints_class_default(self):
         return GoogleStorageCheckpoints
 
-    def _resolve_storagetype(self, path, type):
+    def _resolve_storagetype(self, path, storagetype):
         """Based on the arguments and status of GCS, return a valid type."""
         if "/" not in path or path.endswith("/") or path == "":
-            if type not in (None, "directory"):
+            if storagetype not in (None, "directory"):
                 raise web.HTTPError(
                     400, u"%s is not a directory" % path, reason="bad type")
             return "directory"
-        if type is None and path.endswith(".ipynb"):
+        if storagetype is None and path.endswith(".ipynb"):
             return "notebook"
-        if type is not None:
-            return type
-        # If type cannot be inferred from the argument set, hit
+        if storagetype is not None:
+            return storagetype
+        # If type cannot be inferred from the argument set, use
         # the storage API to see if a blob or a prefix exists.
         if self.file_exists(path):
             return "file"
