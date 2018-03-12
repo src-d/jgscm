@@ -209,6 +209,11 @@ class GoogleStorageContentManager(ContentsManager):
             """
                          )
 
+    def __init__(self, *args, **kwargs):
+        # Stub for the GSClient instance (set lazily by the client property).
+        self._client = None
+        super(GoogleStorageContentManager, self).__init__(*args, **kwargs)
+
     def debug_args(fn):
         def wrapped_fn(self, *args, **kwargs):
             self.log.debug("call %s(%s%s%s)", fn.__name__,
@@ -245,9 +250,8 @@ class GoogleStorageContentManager(ContentsManager):
             return False
         if path.startswith("/"):
             path = path[1:]
-        try:
-            bucket_name, bucket_path = self._parse_path(path)
-        except ValueError:
+        bucket_name, bucket_path = self._parse_path(path)
+        if not bucket_path:
             return False
         bucket = self._get_bucket(bucket_name)
         if bucket is None or bucket_path == "":
@@ -262,7 +266,18 @@ class GoogleStorageContentManager(ContentsManager):
             return True
         if not path.endswith("/"):
             path += "/"
-        return self._fetch(path, content=False)[0]
+        bucket_name, blob_prefix_name = self._parse_path(path)
+        # Get the bucket, fail if the bucket cannot be found.
+        bucket = self._get_bucket(bucket_name)
+        if not bucket:
+            return False
+        # Only check that bucket exists.
+        if not blob_prefix_name:
+            return True
+        # Check that some blobs exist with the prefix as a path.
+        if list(bucket.list_blobs(prefix=blob_prefix_name, max_results=1)):
+            return True
+        return False
 
     @debug_args
     def get(self, path, content=True, type=None, format=None):
@@ -273,11 +288,10 @@ class GoogleStorageContentManager(ContentsManager):
             path = path[1:]
         if not path:
             path = self.default_path
-        if "/" not in path or path.endswith("/") or type == "directory":
-            if type not in (None, "directory"):
-                raise web.HTTPError(
-                    400, u"%s is not a directory" % path, reason="bad type")
-            if "/" in path and not path.endswith("/"):
+
+        type = self._resolve_storagetype(path, type)
+        if type == "directory":
+            if path and not path.endswith("/"):
                 path += "/"
             exists, members = self._fetch(path, content=content)
             if not exists:
@@ -428,28 +442,49 @@ class GoogleStorageContentManager(ContentsManager):
         """
         :return: used instance of :class:`google.cloud.storage.Client`.
         """
-        try:
+        if self._client is not None:
             return self._client
-        except AttributeError:
-            if not self.project:
-                self._client = GSClient()
-            else:
-                self._client = GSClient.from_service_account_json(
-                    self.keyfile, project=self.project)
-            return self._client
+        if not self.project:
+            self._client = GSClient()
+        else:
+            self._client = GSClient.from_service_account_json(
+                self.keyfile, project=self.project)
+        return self._client
 
     def run_post_save_hook(self, model, os_path):
         """Run the post-save hook if defined, and log errors"""
         if self.post_save_hook:
             try:
                 self.log.debug("Running post-save hook on %s", os_path)
-                self.post_save_hook(os_path=path, model=model, contents_manager=self)
+                self.post_save_hook(os_path=os_path,
+                                    model=model,
+                                    contents_manager=self)
             except Exception:
                 self.log.error("Post-save hook failed on %s", os_path, exc_info=True)
 
     @default("checkpoints_class")
     def _checkpoints_class_default(self):
         return GoogleStorageCheckpoints
+
+    def _resolve_storagetype(self, path, storagetype):
+        """Based on the arguments and status of GCS, return a valid type."""
+        if "/" not in path or path.endswith("/") or path == "":
+            if storagetype not in (None, "directory"):
+                raise web.HTTPError(
+                    400, u"%s is not a directory" % path, reason="bad type")
+            return "directory"
+        if storagetype is None and path.endswith(".ipynb"):
+            return "notebook"
+        if storagetype is not None:
+            return storagetype
+        # If type cannot be inferred from the argument set, use
+        # the storage API to see if a blob or a prefix exists.
+        if self.file_exists(path):
+            return "file"
+        if self.dir_exists(path):
+            return "directory"
+        raise web.HTTPError(
+            404, u"%s does not exist" % path, reason="bad type")
 
     def _get_bucket(self, name, throw=False):
         """
@@ -494,12 +529,8 @@ class GoogleStorageContentManager(ContentsManager):
         :param path: string to split.
         :return: tuple(bucket name, bucket path).
         """
-        try:
-            bucket, name = path.split("/", 1)
-        except ValueError:
-            bucket = path
-            name = ""
-        return bucket, name
+        bucket, _, blobname = path.partition("/")
+        return bucket, blobname
 
     @staticmethod
     def _get_blob_path(blob):
@@ -508,10 +539,7 @@ class GoogleStorageContentManager(ContentsManager):
         :param blob: instance of :class:`google.cloud.storage.Blob`.
         :return: path string.
         """
-        path = url_unescape(blob.path)
-        path = path[3:]  # /b/
-        path = path.replace("/o/", "/", 1)
-        return path
+        return blob.bucket.name + "/" + blob.name
 
     @staticmethod
     def _get_blob_name(blob):
@@ -521,11 +549,11 @@ class GoogleStorageContentManager(ContentsManager):
         :return: name string.
         """
         if isinstance(blob, Blob):
-            return url_unescape(blob.path).rsplit("/", 1)[-1]
+            return os.path.basename(blob.name)
         assert isinstance(blob, (unicode, str))
         if blob.endswith("/"):
             blob = blob[:-1]
-        return blob.rsplit("/", 1)[-1]
+        return os.path.basename(blob)
 
     @staticmethod
     def _get_dir_name(path):
@@ -713,7 +741,7 @@ class GoogleStorageContentManager(ContentsManager):
         model = {
             "type": "directory",
             "name": self._get_dir_name(path),
-            "path": path,
+            "path": path.rstrip('/'),
             "last_modified": "",
             "created": "",
             "content": None,
