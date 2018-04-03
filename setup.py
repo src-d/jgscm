@@ -4,7 +4,7 @@ from setuptools import setup
 setup(
     name="jgscm",
     description="Jupyter Google Cloud Storage ContentsManager",
-    version="0.1.8",
+    version="0.1.9",
     license="MIT",
     author="Vadim Markovtsev",
     author_email="vadim@sourced.tech",
